@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLM Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #1a202c;
+            color: #edf2f7;
+            font-size: 1.2em;
+        }
+        .chat-message {
+            margin-bottom: 10px;
+        }
+        .llm1-message {
+            text-align: left;
+            color: #f66;
+        }
+        .llm2-message {
+            text-align: right;
+            color: rgb(32, 172, 248);
+        }
+        .chat-window {
+            overflow-y: auto;
+            border-color: #4a5568;
+            background-color: #2d3748;
+        }
+        .user-input label {
+            color: #edf2f7;
+        }
+        .user-input textarea, .user-input select {
+            background-color: #2d3748;
+            color: #edf2f7;
+            border-color: #4a5568;
+        }
+    </style>
+</head>
+<body >
+    <h1 class="text-3xl font-bold text-center my-4">LLM Chat</h1>
+    <div class="chat-window h-96 border border-gray-300 rounded p-4 mx-auto w-4/5 mb-2" id="chat-window"></div>
+    <div class="user-input mx-auto w-4/5 mt-4">
+        <label for="model1" class="block text-gray-900 text-sm font-bold mb-2">LLM 1:</label>
+        <select id="model1" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-2">
+        </select>
+        <label for="model2" class="block text-gray-900 text-sm font-bold mb-2">LLM 2:</label>
+        <select id="model2" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-2">
+        </select>
+         <label for="system-prompt1" class="block text-gray-900 text-sm font-bold mb-2">System Prompt 1:</label>
+        <textarea id="system-prompt1" rows="3" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-2">limit your output to 20 words</textarea>
+         <label for="system-prompt2" class="block text-gray-900 text-sm font-bold mb-2">System Prompt 2:</label>
+        <textarea id="system-prompt2" rows="3" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-2">limit your output to 20 words</textarea>
+        <label for="conversation-starter" class="block text-gray-900 text-sm font-bold mb-2">Conversation Starter:</label>
+        <textarea id="conversation-starter" rows="3" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-2"></textarea>
+        <label for="output-rate" class="block text-gray-900 text-sm font-bold mb-2">Output Rate (outputs per second):</label>
+        <input type="range" id="output-rate" min="0.1" max="1" step="0.1" value="1" class="w-full mb-2">
+        <div class="flex justify-center mt-4">
+            <button onclick="startChat()" id="start-chat-button" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2">Start Chat</button>
+            <button onclick="pauseChat()" id="pause-chat-button" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2">Pause Chat</button>
+            <button onclick="stopChat()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">Stop Chat</button>
+             <button onclick="clearChat()" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">Clear Chat</button>
+        </div>
+    </div>
+
+    <script>
+        let chatRunning = false;
+        let continueChat = true;
+        let chatPaused = false;
+        const chatWindow = document.getElementById('chat-window');
+        const outputRateSlider = document.getElementById('output-rate');
+        const startChatButton = document.getElementById('start-chat-button');
+        const pauseChatButton = document.getElementById('pause-chat-button');
+        const model1Select = document.getElementById('model1');
+        const model2Select = document.getElementById('model2');
+        const systemPrompt1Textarea = document.getElementById('system-prompt1');
+        const systemPrompt2Textarea = document.getElementById('system-prompt2');
+
+        async function fetchModels() {
+            try {
+                const response = await fetch('/models');
+                const data = await response.json();
+                console.log('Models data:', data);
+                if (data.models) {
+                    if (model1Select) {
+                        data.models.forEach(model => {
+                            const option1 = document.createElement('option');
+                            option1.value = model;
+                            option1.text = model;
+                            model1Select.add(option1);
+                        });
+                    }
+                    if (model2Select) {
+                        data.models.forEach(model => {
+                            const option2 = document.createElement('option');
+                            option2.value = model;
+                            option2.text = model;
+                            model2Select.add(option2);
+                        });
+                    }
+                } else if (data.error) {
+                    console.error('Error fetching models:', data.error);
+                }
+            } catch (error) {
+                console.error('Error fetching models:', error);
+            }
+        }
+
+        async function fetchDefaultSystemPrompt() {
+            try {
+                const response = await fetch('/default_system_prompt');
+                const data = await response.json();
+                if (data.default_system_prompt) {
+                    systemPrompt1Textarea.value = data.default_system_prompt;
+                    systemPrompt2Textarea.value = data.default_system_prompt;
+                } else if (data.error) {
+                    console.error('Error fetching default system prompt:', data.error);
+                }
+            } catch (error) {
+                 console.error('Error fetching default system prompt:', error);
+            }
+        }
+
+        async function startChat() {
+            if (chatRunning && !chatPaused) {
+                alert('Chat is already running');
+                return;
+            }
+            chatRunning = true;
+            continueChat = true;
+            chatPaused = false;
+            startChatButton.textContent = 'Resume Chat';
+            if (chatWindow.innerHTML === '') {
+                chatWindow.innerHTML = '';
+            }
+            const systemPrompt1 = document.getElementById('system-prompt1').value;
+            const systemPrompt2 = document.getElementById('system-prompt2').value;
+            const conversationStarter = document.getElementById('conversation-starter').value;
+            const model1 = document.getElementById('model1').value;
+            const model2 = document.getElementById('model2').value;
+            let currentPrompt = `Conversation Starter: ${conversationStarter}`;
+
+            while (continueChat) {
+                 if (chatPaused) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    continue;
+                }
+                const outputRate = parseFloat(outputRateSlider.value);
+                const delay = 1000 / outputRate;
+
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_input: currentPrompt,
+                        model1: model1,
+                        model2: model2,
+                        system_prompt1: systemPrompt1,
+                        system_prompt2: systemPrompt2
+                    })
+                });
+
+                const reader = response.body.getReader();
+                let partialResponse = '';
+                while(true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        break;
+                    }
+                    partialResponse += new TextDecoder().decode(value);
+                    try {
+                        const data = JSON.parse(partialResponse);
+                        if (data.response1) {
+                            chatWindow.innerHTML += `
+                                <div class="chat-message">
+                                    <div class="llm1-message">${data.response1.replace('LLM1: ', '')}</div>
+                                </div>
+                            `;
+                            chatWindow.scrollTop = chatWindow.scrollHeight;
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                        if (data.response2) {
+                            chatWindow.innerHTML += `
+                                <div class="chat-message">
+                                    <div class="llm2-message">${data.response2.replace('LLM2: ', '')}</div>
+                                </div>
+                            `;
+                            chatWindow.scrollTop = chatWindow.scrollHeight;
+                            currentPrompt = data.response2;
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                        partialResponse = '';
+                    } catch (e) {
+                        // Handle incomplete JSON
+                    }
+                }
+            }
+            chatRunning = false;
+            startChatButton.textContent = 'Start Chat';
+        }
+
+        function pauseChat() {
+            chatPaused = true;
+            startChatButton.textContent = 'Resume Chat';
+        }
+
+        function stopChat() {
+            continueChat = false;
+            fetch('/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+            });
+        }
+
+         function clearChat() {
+            fetch('/clear', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                chatWindow.innerHTML = '';
+                alert(data.message);
+            });
+        }
+
+        fetchModels();
+        fetchDefaultSystemPrompt();
+    </script>
+</body>
+</html>
