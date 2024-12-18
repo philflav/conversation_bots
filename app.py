@@ -10,7 +10,7 @@ CORS(app)
 # These are defaults. Models are selected by looking at ollama list.
 MODEL_1 = "llama3.2:latest"
 MODEL_2 = "llama3.2:latest"
-DEFAULT_SYSTEM_PROMPT = "Limit your output to 20 words. Use a conversational, interogative style. Don't repeat yourself. Don't immediately answer a question with another question."
+DEFAULT_SYSTEM_PROMPT = "Limit your output to 20 words. Use a conversational, interrogative style. Don't repeat yourself. Don't immediately answer a question with another question."
 
 def get_llm_response(prompt, model, system_prompt):
     try:
